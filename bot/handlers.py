@@ -827,7 +827,7 @@ async def majburiy_section(message: Message):
     if not has_access:
         await message.answer(
             f"📚 *Majburiy bo'lim*\n\n"
-            f"Bu bo'limda barcha sinflar uchun tarix testlari mavjud.\n\n"
+            f"Bu yerda DTM majburiy blokda tushadigan testlar jamlanmasi bor!\n\n"
             f"💳 Bir martalik to'lov: *{MAJBURIY_PRICE:,} so'm*\n"
             f"✅ To'lovdan keyin 6-11 sinf testlari ochiladi\n"
             f"📝 Har bir sinfda 50 ta savol\n\n"
@@ -1050,17 +1050,6 @@ async def majburiy_answer(callback: CallbackQuery, state: FSMContext):
         percent = round(correct_count / len(q_ids) * 100, 1)
         user = session.query(User).filter_by(telegram_id=callback.from_user.id).first()
 
-        if percent >= 85:
-            daraja = "🏆 A+"
-        elif percent >= 70:
-            daraja = "⭐⭐⭐ A"
-        elif percent >= 55:
-            daraja = "⭐⭐ B"
-        elif percent >= 45:
-            daraja = "⭐ C"
-        else:
-            daraja = "🔴 D"
-
         result = MajburiyResult(
             user_id=user.id,
             subject_id=subject_id,
@@ -1075,8 +1064,7 @@ async def majburiy_answer(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer(
             f"🎉 *{sinf}-sinf Tarix testi yakunlandi!*\n\n"
             f"✅ To'g'ri javoblar: *{correct_count} / {len(q_ids)}*\n"
-            f"🎯 Natija: *{percent}%*\n"
-            f"🎖️ Daraja: *{daraja}*",
+            f"🎯 Natija: *{percent}%*",
             parse_mode="Markdown",
             reply_markup=main_menu()
         )
