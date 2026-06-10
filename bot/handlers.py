@@ -799,3 +799,449 @@ async def admin_stats(message: Message):
 
     text = get_wright_map_text(thetas, q_data)
     await message.answer(f"```\n{text}\n```", parse_mode="Markdown")
+
+# ============ MAJBURIY BO'LIM ============
+from config import MAJBURIY_PRICE
+from database import MajburiySubject, MajburiyQuestion, MajburiyPayment, MajburiyResult
+from keyboards import majburiy_menu, sinf_menu, majburiy_answer_keyboard, admin_majburiy_payment_keyboard
+
+class MajburiyPayState(StatesGroup):
+    waiting_screenshot = State()
+    subject_id = State()
+
+@router.message(F.text == "📚 Majburiy bo'lim")
+async def majburiy_section(message: Message):
+    session = get_session()
+    user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
+
+    # Tarix uchun to'lov bormi tekshirish
+    tarix = session.query(MajburiySubject).filter_by(name="Tarix").first()
+    has_access = False
+    if tarix:
+        pay = session.query(MajburiyPayment).filter_by(
+            user_id=user.id, subject_id=tarix.id, status="approved"
+        ).first()
+        has_access = pay is not None
+    session.close()
+
+    if not has_access:
+        await message.answer(
+            f"📚 *Majburiy bo'lim*\n\n"
+            f"Bu bo'limda barcha sinflar uchun tarix testlari mavjud.\n\n"
+            f"💳 Bir martalik to'lov: *{MAJBURIY_PRICE:,} so'm*\n"
+            f"✅ To'lovdan keyin 6-11 sinf testlari ochiladi\n"
+            f"📝 Har bir sinfda 50 ta savol\n\n"
+            f"To'lov qilish uchun 👇",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="💳 To'lov qilish", callback_data="maj_pay_1")],
+                [InlineKeyboardButton(text=f"📞 {CONTACT_USERNAME}", url=f"https://t.me/{CONTACT_USERNAME.replace('@', '')}")]
+            ])
+        )
+    else:
+        await message.answer(
+            "📚 *Majburiy bo'lim — Tarix*\n\nSinf tanlang 👇",
+            parse_mode="Markdown",
+            reply_markup=sinf_menu(tarix.id if tarix else 1)
+        )
+
+@router.callback_query(F.data.startswith("maj_pay_"))
+async def majburiy_pay(callback: CallbackQuery, state: FSMContext):
+    subject_id = int(callback.data.split("_")[2])
+    await state.update_data(subject_id=subject_id)
+    await state.set_state(MajburiyPayState.waiting_screenshot)
+
+    await callback.message.answer(
+        f"💳 *To'lov ma'lumotlari*\n\n"
+        f"💰 Summa: *{MAJBURIY_PRICE:,} so'm*\n"
+        f"🏦 Karta: `{CARD_NUMBER}`\n"
+        f"👤 Karta egasi: *{CARD_OWNER}*\n\n"
+        f"✅ Pul o'tkazgandan keyin *chek (screenshot)* yuboring 👇",
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.message(MajburiyPayState.waiting_screenshot, F.photo)
+async def majburiy_screenshot(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    subject_id = data.get("subject_id", 1)
+
+    session = get_session()
+    user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
+
+    pay = MajburiyPayment(
+        user_id=user.id,
+        subject_id=subject_id,
+        screenshot_file_id=message.photo[-1].file_id
+    )
+    session.add(pay)
+    session.commit()
+    pay_id = pay.id
+    session.close()
+
+    await bot.send_photo(
+        ADMIN_ID,
+        photo=message.photo[-1].file_id,
+        caption=(
+            f"📚 *Majburiy bo'lim to'lovi!*\n\n"
+            f"👤 {message.from_user.full_name}\n"
+            f"🆔 `{message.from_user.id}`\n"
+            f"💰 *{MAJBURIY_PRICE:,} so'm*\n"
+            f"🔢 To'lov ID: #{pay_id}"
+        ),
+        parse_mode="Markdown",
+        reply_markup=admin_majburiy_payment_keyboard(pay_id)
+    )
+
+    await message.answer(
+        "✅ *Chekingiz yuborildi!*\n\nAdmin tez orada tasdiqlaydi 😊",
+        parse_mode="Markdown",
+        reply_markup=main_menu()
+    )
+    await state.clear()
+
+@router.callback_query(F.data.startswith("mapprove_"))
+async def majburiy_approve(callback: CallbackQuery, bot: Bot):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ Ruxsat yo'q!")
+        return
+
+    pay_id = int(callback.data.split("_")[1])
+    session = get_session()
+    pay = session.query(MajburiyPayment).filter_by(id=pay_id).first()
+
+    if pay:
+        pay.status = "approved"
+        session.commit()
+        user = session.query(User).filter_by(id=pay.user_id).first()
+        await bot.send_message(
+            user.telegram_id,
+            "✅ *Majburiy bo'lim to'lovi tasdiqlandi!*\n\n"
+            "📚 Endi barcha sinflar testlarini yecha olasiz! 🎉",
+            parse_mode="Markdown",
+            reply_markup=main_menu()
+        )
+
+    await callback.message.edit_caption(
+        callback.message.caption + "\n\n✅ *TASDIQLANDI*",
+        parse_mode="Markdown"
+    )
+    await callback.answer("✅ Tasdiqlandi!")
+    session.close()
+
+@router.callback_query(F.data.startswith("mreject_"))
+async def majburiy_reject(callback: CallbackQuery, bot: Bot):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ Ruxsat yo'q!")
+        return
+
+    pay_id = int(callback.data.split("_")[1])
+    session = get_session()
+    pay = session.query(MajburiyPayment).filter_by(id=pay_id).first()
+
+    if pay:
+        pay.status = "rejected"
+        session.commit()
+        user = session.query(User).filter_by(id=pay.user_id).first()
+        await bot.send_message(
+            user.telegram_id,
+            f"❌ To'lovingiz rad etildi.\nMurojaat: {CONTACT_USERNAME}",
+            reply_markup=contact_keyboard()
+        )
+
+    await callback.message.edit_caption(
+        callback.message.caption + "\n\n❌ *RAD ETILDI*",
+        parse_mode="Markdown"
+    )
+    await callback.answer("❌ Rad etildi!")
+    session.close()
+
+# ============ SINF TANLASH VA TEST ============
+@router.callback_query(F.data.startswith("maj_sinf_"))
+async def majburiy_sinf(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split("_")
+    subject_id = int(parts[2])
+    sinf = int(parts[3])
+
+    session = get_session()
+    questions = session.query(MajburiyQuestion).filter_by(
+        subject_id=subject_id, sinf=sinf
+    ).all()
+    session.close()
+
+    if not questions:
+        await callback.message.answer(
+            f"📭 {sinf}-sinf uchun savollar hali qo'shilmagan.\nAdmin tez orada qo'shadi!",
+            reply_markup=contact_keyboard()
+        )
+        await callback.answer()
+        return
+
+    import random
+    selected = random.sample(questions, min(50, len(questions)))
+    q_ids = [q.id for q in selected]
+
+    await state.update_data(
+        maj_questions=q_ids,
+        maj_current=0,
+        maj_correct=0,
+        maj_subject_id=subject_id,
+        maj_sinf=sinf
+    )
+
+    first_q = selected[0]
+    await callback.message.answer(
+        f"📝 *{sinf}-sinf Tarix — 1-savol / {len(q_ids)}*\n\n"
+        f"*{first_q.text}*\n\n"
+        f"🅰️ {first_q.option_a}\n"
+        f"🅱️ {first_q.option_b}\n"
+        f"🅲 {first_q.option_c}\n"
+        f"🅳 {first_q.option_d}",
+        parse_mode="Markdown",
+        reply_markup=majburiy_answer_keyboard(first_q.id)
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("mans_"))
+async def majburiy_answer(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split("_")
+    question_id = int(parts[1])
+    selected = parts[2]
+
+    data = await state.get_data()
+    q_ids = data.get("maj_questions", [])
+    current = data.get("maj_current", 0)
+    correct_count = data.get("maj_correct", 0)
+    subject_id = data.get("maj_subject_id", 1)
+    sinf = data.get("maj_sinf", 6)
+
+    session = get_session()
+    question = session.query(MajburiyQuestion).filter_by(id=question_id).first()
+
+    is_correct = selected == question.correct
+    if is_correct:
+        correct_count += 1
+
+    result_text = "✅ To'g'ri!" if is_correct else f"❌ Noto'g'ri! To'g'ri: *{question.correct.upper()}*"
+
+    await callback.message.edit_text(
+        f"*{question.text}*\n\n"
+        f"Siz: *{selected.upper()}* — {result_text}",
+        parse_mode="Markdown"
+    )
+
+    current += 1
+    await state.update_data(maj_current=current, maj_correct=correct_count)
+
+    if current < len(q_ids):
+        next_q = session.query(MajburiyQuestion).filter_by(id=q_ids[current]).first()
+        await callback.message.answer(
+            f"📝 *{sinf}-sinf Tarix — {current+1}-savol / {len(q_ids)}*\n\n"
+            f"*{next_q.text}*\n\n"
+            f"🅰️ {next_q.option_a}\n"
+            f"🅱️ {next_q.option_b}\n"
+            f"🅲 {next_q.option_c}\n"
+            f"🅳 {next_q.option_d}",
+            parse_mode="Markdown",
+            reply_markup=majburiy_answer_keyboard(next_q.id)
+        )
+    else:
+        # Test tugadi
+        percent = round(correct_count / len(q_ids) * 100, 1)
+        user = session.query(User).filter_by(telegram_id=callback.from_user.id).first()
+
+        if percent >= 85:
+            daraja = "🏆 A+"
+        elif percent >= 70:
+            daraja = "⭐⭐⭐ A"
+        elif percent >= 55:
+            daraja = "⭐⭐ B"
+        elif percent >= 45:
+            daraja = "⭐ C"
+        else:
+            daraja = "🔴 D"
+
+        result = MajburiyResult(
+            user_id=user.id,
+            subject_id=subject_id,
+            sinf=sinf,
+            total=len(q_ids),
+            correct=correct_count,
+            percent=percent
+        )
+        session.add(result)
+        session.commit()
+
+        await callback.message.answer(
+            f"🎉 *{sinf}-sinf Tarix testi yakunlandi!*\n\n"
+            f"✅ To'g'ri javoblar: *{correct_count} / {len(q_ids)}*\n"
+            f"🎯 Natija: *{percent}%*\n"
+            f"🎖️ Daraja: *{daraja}*",
+            parse_mode="Markdown",
+            reply_markup=main_menu()
+        )
+        await state.clear()
+
+    session.close()
+    await callback.answer()
+
+# ============ ADMIN: MAJBURIY SAVOL QO'SHISH ============
+@router.message(Command("addmaj"))
+async def add_majburiy_info(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    await message.answer(
+        "*Majburiy bo'lim savol qo'shish:*\n\n"
+        "PDF yuboring yoki:\n"
+        "`/majq <sinf> <savol>|<A>|<B>|<C>|<D>|<to'g'ri>`\n\n"
+        "Masalan:\n"
+        "`/majq 6 Qadimgi dunyo tarixi qachon boshlangan?|Mil.av. 3000|Mil.av. 5000|Mil.av. 1000|Mil.av. 476|a`",
+        parse_mode="Markdown"
+    )
+
+@router.message(Command("majq"))
+async def add_majburiy_question(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    try:
+        parts = message.text.replace("/majq ", "").split(" ", 1)
+        sinf = int(parts[0])
+        q_parts = parts[1].split("|")
+        text = q_parts[0]
+        opt_a, opt_b, opt_c, opt_d = q_parts[1], q_parts[2], q_parts[3], q_parts[4]
+        correct = q_parts[5].strip().lower()
+
+        session = get_session()
+        subject = session.query(MajburiySubject).filter_by(name="Tarix").first()
+        if not subject:
+            subject = MajburiySubject(name="Tarix")
+            session.add(subject)
+            session.commit()
+
+        q = MajburiyQuestion(
+            subject_id=subject.id,
+            sinf=sinf,
+            text=text,
+            option_a=opt_a,
+            option_b=opt_b,
+            option_c=opt_c,
+            option_d=opt_d,
+            correct=correct
+        )
+        session.add(q)
+        session.commit()
+        q_id = q.id
+
+        count = session.query(MajburiyQuestion).filter_by(
+            subject_id=subject.id, sinf=sinf
+        ).count()
+        session.close()
+
+        await message.answer(
+            f"✅ *{sinf}-sinf uchun savol qo'shildi!*\n"
+            f"🆔 #{q_id}\n"
+            f"📊 {sinf}-sinfda jami: {count} ta savol",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await message.answer(f"❌ Xato: {str(e)}\n\nFormat: `/majq 6 Savol|A|B|C|D|a`")
+
+# ============ ADMIN: MATN FORMATIDA SAVOL YUKLASH ============
+class MajburiyTextState(StatesGroup):
+    waiting_text = State()
+
+@router.message(Command("majtext"))
+async def majburiy_text_start(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    await message.answer(
+        "📝 *Matn formatida savollar kiriting:*\n\n"
+        "Birinchi qatorda sinf raqami, keyin savollar:\n\n"
+        "```\n6\n1. Savol matni\nA) Variant\nB) Variant\nC) Variant\nD) Variant\nJavob: B\n\n2. ...\n```\n\n"
+        "Yuborishingiz mumkin!",
+        parse_mode="Markdown"
+    )
+    await state.set_state(MajburiyTextState.waiting_text)
+
+@router.message(MajburiyTextState.waiting_text)
+async def majburiy_text_receive(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    text = message.text.strip()
+    lines = text.split('\n')
+
+    # Birinchi qator — sinf raqami
+    try:
+        sinf = int(lines[0].strip())
+        if sinf not in range(6, 12):
+            await message.answer("❌ Sinf 6-11 oralig'ida bo'lishi kerak!")
+            return
+    except ValueError:
+        await message.answer("❌ Birinchi qatorda sinf raqami bo'lishi kerak! Masalan: 6")
+        return
+
+    # Savollarni ajratish
+    import re
+    full_text = '\n'.join(lines[1:])
+    blocks = re.split(r'\n(?=\d+\.)', full_text.strip())
+
+    session = get_session()
+    subject = session.query(MajburiySubject).filter_by(name="Tarix").first()
+    if not subject:
+        subject = MajburiySubject(name="Tarix")
+        session.add(subject)
+        session.commit()
+
+    saved = 0
+    errors = []
+
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        try:
+            block_lines = [l.strip() for l in block.split('\n') if l.strip()]
+            # Savol matni
+            q_text = re.sub(r'^\d+\.\s*', '', block_lines[0])
+            opts = {}
+            correct = None
+
+            for line in block_lines[1:]:
+                m = re.match(r'^([ABCD])[.)]\s*(.+)', line, re.IGNORECASE)
+                if m:
+                    opts[m.group(1).lower()] = m.group(2)
+                jav = re.match(r'^Javob:\s*([ABCD])', line, re.IGNORECASE)
+                if jav:
+                    correct = jav.group(1).lower()
+
+            if len(opts) >= 4 and correct:
+                q = MajburiyQuestion(
+                    subject_id=subject.id,
+                    sinf=sinf,
+                    text=q_text,
+                    option_a=opts.get('a', ''),
+                    option_b=opts.get('b', ''),
+                    option_c=opts.get('c', ''),
+                    option_d=opts.get('d', ''),
+                    correct=correct
+                )
+                session.add(q)
+                saved += 1
+        except Exception as e:
+            errors.append(str(e))
+
+    session.commit()
+    count = session.query(MajburiyQuestion).filter_by(
+        subject_id=subject.id, sinf=sinf
+    ).count()
+    session.close()
+
+    result = f"✅ *{saved} ta savol {sinf}-sinfga saqlandi!*\n"
+    result += f"📊 {sinf}-sinfda jami: {count} ta savol\n"
+    if errors:
+        result += f"⚠️ {len(errors)} ta xato bo'ldi"
+
+    await message.answer(result, parse_mode="Markdown")
+    await state.clear()

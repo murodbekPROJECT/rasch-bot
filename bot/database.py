@@ -70,3 +70,43 @@ def init_db():
 
 def get_session():
     return Session()
+
+class MajburiySubject(Base):
+    __tablename__ = "majburiy_subjects"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)  # "Tarix"
+    questions = relationship("MajburiyQuestion", back_populates="subject")
+
+class MajburiyQuestion(Base):
+    __tablename__ = "majburiy_questions"
+    id = Column(Integer, primary_key=True)
+    subject_id = Column(Integer, ForeignKey("majburiy_subjects.id"))
+    sinf = Column(Integer)  # 6, 7, 8, 9, 10, 11
+    text = Column(Text)
+    option_a = Column(String)
+    option_b = Column(String)
+    option_c = Column(String)
+    option_d = Column(String)
+    correct = Column(String)  # a, b, c, d
+    created_at = Column(DateTime, default=datetime.now)
+    subject = relationship("MajburiySubject", back_populates="questions")
+
+class MajburiyPayment(Base):
+    __tablename__ = "majburiy_payments"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    subject_id = Column(Integer, ForeignKey("majburiy_subjects.id"))
+    screenshot_file_id = Column(String)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.now)
+
+class MajburiyResult(Base):
+    __tablename__ = "majburiy_results"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    subject_id = Column(Integer, ForeignKey("majburiy_subjects.id"))
+    sinf = Column(Integer)
+    total = Column(Integer)
+    correct = Column(Integer)
+    percent = Column(Float)
+    created_at = Column(DateTime, default=datetime.now)

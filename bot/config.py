@@ -10,3 +10,5 @@ MONTHLY_PRICE = 20000  # so'm
 DATABASE_URL = "sqlite:///rasch_bot.db"
 
 WEBAPP_URL = "https://your-frontend-url.com"  # Deploy qilgach o'zgartiring
+
+MAJBURIY_PRICE = 5000  # so'm
