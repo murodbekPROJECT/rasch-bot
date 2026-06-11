@@ -1163,8 +1163,8 @@ async def majburiy_text_receive(message: Message, state: FSMContext):
     # Birinchi qator — sinf raqami
     try:
         sinf = int(lines[0].strip())
-        if sinf not in range(6, 12):
-            await message.answer("❌ Sinf 6-11 oralig'ida bo'lishi kerak!")
+        if sinf not in list(range(6, 12)) + [0]:
+            await message.answer("❌ Sinf 0 (umumiy) yoki 6-11 bo'lishi kerak!")
             return
     except ValueError:
         await message.answer("❌ Birinchi qatorda sinf raqami bo'lishi kerak! Masalan: 6")
@@ -1233,3 +1233,48 @@ async def majburiy_text_receive(message: Message, state: FSMContext):
 
     await message.answer(result, parse_mode="Markdown")
     await state.clear()
+
+# ============ ADMIN: FOYDALANUVCHILAR RO'YXATI ============
+@router.message(Command("users"))
+async def admin_users(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    session = get_session()
+    users = session.query(User).order_by(User.created_at.desc()).limit(20).all()
+    
+    text = "👥 *So'nggi 20 ta foydalanuvchi:*\n\n"
+    for u in users:
+        sub = "👑" if (u.is_subscribed and u.subscription_end and u.subscription_end > datetime.now()) else "❌"
+        text += f"{sub} {u.full_name} | `{u.telegram_id}`\n"
+        text += f"   θ={u.theta} | Test={u.single_tests_left}\n\n"
+    
+    session.close()
+    await message.answer(text, parse_mode="Markdown")
+
+# ============ ADMIN: TO'LOVLAR TARIXI ============
+@router.message(Command("payments"))
+async def admin_payments(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    session = get_session()
+    
+    # So'nggi to'lovlar
+    main_pays = session.query(Payment).order_by(Payment.created_at.desc()).limit(10).all()
+    maj_pays = session.query(MajburiyPayment).order_by(MajburiyPayment.created_at.desc()).limit(10).all()
+    
+    text = "💳 *So'nggi to'lovlar:*\n\n"
+    text += "📝 *Asosiy test:*\n"
+    for p in main_pays:
+        u = session.query(User).filter_by(id=p.user_id).first()
+        status = "✅" if p.status == "approved" else "⏳" if p.status == "pending" else "❌"
+        ptype = "Bir martalik" if p.payment_type == "single" else "Oylik"
+        text += f"{status} {u.full_name if u else 'N/A'} — {p.amount:,} so'm ({ptype})\n"
+    
+    text += "\n📚 *Majburiy bo'lim:*\n"
+    for p in maj_pays:
+        u = session.query(User).filter_by(id=p.user_id).first()
+        status = "✅" if p.status == "approved" else "⏳" if p.status == "pending" else "❌"
+        text += f"{status} {u.full_name if u else 'N/A'} — 5,000 so'm\n"
+    
+    session.close()
+    await message.answer(text, parse_mode="Markdown")
