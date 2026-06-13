@@ -1273,3 +1273,44 @@ async def admin_payments(message: Message):
 
     session.close()
     await message.answer(text, parse_mode="Markdown")
+
+# ============ ADMIN: MAJBURIY SAVOLLARNI O'CHIRISH ============
+@router.message(Command("delmaj"))
+async def del_majburiy(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    parts = message.text.replace("/delmaj", "").strip()
+
+    session = get_session()
+    subject = session.query(MajburiySubject).filter_by(name="Tarix").first()
+
+    if not subject:
+        await message.answer("❌ Tarix fani topilmadi!")
+        session.close()
+        return
+
+    if parts == "all":
+        count = session.query(MajburiyQuestion).filter_by(subject_id=subject.id).count()
+        session.query(MajburiyQuestion).filter_by(subject_id=subject.id).delete()
+        session.commit()
+        await message.answer(f"✅ Barcha {count} ta savol o'chirildi!")
+    else:
+        try:
+            sinf = int(parts)
+            count = session.query(MajburiyQuestion).filter_by(
+                subject_id=subject.id, sinf=sinf
+            ).count()
+            session.query(MajburiyQuestion).filter_by(
+                subject_id=subject.id, sinf=sinf
+            ).delete()
+            session.commit()
+            await message.answer(f"✅ {sinf}-sinf {count} ta savoli o'chirildi!")
+        except ValueError:
+            await message.answer(
+                "❌ Format:\n"
+                "/delmaj 6 — 6-sinf savollarini o'chirish\n"
+                "/delmaj all — Hammasini o'chirish"
+            )
+
+    session.close()
