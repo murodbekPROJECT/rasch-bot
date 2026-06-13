@@ -1315,7 +1315,6 @@ async def del_majburiy(message: Message):
 
     session.close()
 
-# ============ ADMIN: FOYDALANUVCHINI QAYTA FAOLLASHTIRISH ============
 @router.message(Command("reactivate"))
 async def reactivate_user(message: Message, bot: Bot):
     if message.from_user.id != ADMIN_ID:
@@ -1332,9 +1331,13 @@ async def reactivate_user(message: Message, bot: Bot):
     user = session.query(User).filter_by(telegram_id=telegram_id).first()
 
     if not user:
-        await message.answer(f"❌ {telegram_id} ID li foydalanuvchi topilmadi!")
-        session.close()
-        return
+        user = User(
+            telegram_id=telegram_id,
+            full_name="Foydalanuvchi",
+            username=None
+        )
+        session.add(user)
+        session.commit()
 
     subject = session.query(MajburiySubject).filter_by(name="Tarix").first()
     if not subject:
