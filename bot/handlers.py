@@ -1314,3 +1314,59 @@ async def del_majburiy(message: Message):
             )
 
     session.close()
+
+# ============ ADMIN: FOYDALANUVCHINI QAYTA FAOLLASHTIRISH ============
+@router.message(Command("reactivate"))
+async def reactivate_user(message: Message, bot: Bot):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    parts = message.text.replace("/reactivate", "").strip()
+    try:
+        telegram_id = int(parts)
+    except ValueError:
+        await message.answer("❌ Format: /reactivate 123456789")
+        return
+
+    session = get_session()
+    user = session.query(User).filter_by(telegram_id=telegram_id).first()
+
+    if not user:
+        await message.answer(f"❌ {telegram_id} ID li foydalanuvchi topilmadi!")
+        session.close()
+        return
+
+    subject = session.query(MajburiySubject).filter_by(name="Tarix").first()
+    if not subject:
+        subject = MajburiySubject(name="Tarix")
+        session.add(subject)
+        session.commit()
+
+    existing = session.query(MajburiyPayment).filter_by(
+        user_id=user.id, subject_id=subject.id, status="approved"
+    ).first()
+
+    if not existing:
+        pay = MajburiyPayment(
+            user_id=user.id,
+            subject_id=subject.id,
+            screenshot_file_id="manual",
+            status="approved"
+        )
+        session.add(pay)
+        session.commit()
+
+    session.close()
+
+    try:
+        await bot.send_message(
+            telegram_id,
+            "✅ *Majburiy bo'lim to'lovingiz tasdiqlandi!*\n\n"
+            "📚 Endi barcha sinflar testlarini yecha olasiz! 🎉",
+            parse_mode="Markdown",
+            reply_markup=main_menu()
+        )
+    except:
+        pass
+
+    await message.answer(f"✅ {telegram_id} faollashtirildi!")
