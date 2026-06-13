@@ -1,5 +1,3 @@
-import os
-
 BOT_TOKEN = "8943443445:AAE2PF6jHjX_qzEZXwRX9q8sRH0mt2Q_x-E"
 ADMIN_ID = 6364081843
 CARD_NUMBER = "5614683515457745"
@@ -7,6 +5,6 @@ CARD_OWNER = "Murodbek Qo'ziboyev"
 CONTACT_USERNAME = "@rodrygo_11goes"
 SINGLE_PRICE = 7000
 MONTHLY_PRICE = 20000
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///rasch_bot.db")
+DATABASE_URL = "sqlite:///rasch_bot.db"
 WEBAPP_URL = "https://your-frontend-url.com"
 MAJBURIY_PRICE = 5000
