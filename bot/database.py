@@ -4,6 +4,9 @@ from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 from config import DATABASE_URL
 
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
@@ -14,7 +17,7 @@ class User(Base):
     telegram_id = Column(Integer, unique=True)
     full_name = Column(String)
     username = Column(String, nullable=True)
-    theta = Column(Float, default=0.0)  # Rasch qobiliyat darajasi
+    theta = Column(Float, default=0.0)
     is_subscribed = Column(Boolean, default=False)
     subscription_end = Column(DateTime, nullable=True)
     single_tests_left = Column(Integer, default=0)
@@ -30,8 +33,8 @@ class Question(Base):
     option_b = Column(String)
     option_c = Column(String)
     option_d = Column(String)
-    correct = Column(String)  # 'a', 'b', 'c', 'd'
-    difficulty = Column(Float, default=0.0)  # Rasch b parametri (logit)
+    correct = Column(String)
+    difficulty = Column(Float, default=0.0)
     subject = Column(String, default="Fizika")
     created_at = Column(DateTime, default=datetime.now)
     answers = relationship("Answer", back_populates="question")
@@ -39,8 +42,8 @@ class Question(Base):
 class DailyTest(Base):
     __tablename__ = "daily_tests"
     id = Column(Integer, primary_key=True)
-    date = Column(String, unique=True)  # "2024-01-15"
-    question_ids = Column(Text)  # JSON: [1,2,3,...]
+    date = Column(String, unique=True)
+    question_ids = Column(Text)
     is_active = Column(Boolean, default=True)
 
 class Answer(Base):
@@ -59,9 +62,9 @@ class Payment(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     amount = Column(Integer)
-    payment_type = Column(String)  # "single" yoki "monthly"
+    payment_type = Column(String)
     screenshot_file_id = Column(String)
-    status = Column(String, default="pending")  # pending, approved, rejected
+    status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.now)
     user = relationship("User", back_populates="payments")
 
@@ -74,20 +77,20 @@ def get_session():
 class MajburiySubject(Base):
     __tablename__ = "majburiy_subjects"
     id = Column(Integer, primary_key=True)
-    name = Column(String)  # "Tarix"
+    name = Column(String)
     questions = relationship("MajburiyQuestion", back_populates="subject")
 
 class MajburiyQuestion(Base):
     __tablename__ = "majburiy_questions"
     id = Column(Integer, primary_key=True)
     subject_id = Column(Integer, ForeignKey("majburiy_subjects.id"))
-    sinf = Column(Integer)  # 6, 7, 8, 9, 10, 11
+    sinf = Column(Integer)
     text = Column(Text)
     option_a = Column(String)
     option_b = Column(String)
     option_c = Column(String)
     option_d = Column(String)
-    correct = Column(String)  # a, b, c, d
+    correct = Column(String)
     created_at = Column(DateTime, default=datetime.now)
     subject = relationship("MajburiySubject", back_populates="questions")
 
